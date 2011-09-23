@@ -1,0 +1,265 @@
+<?xml version="1.0" encoding="utf-8"?>
+<hookexport>
+  <hookdata>
+	<config>
+	  <hook_name>PinPost</hook_name>
+	  <hook_desc>Прикрепление сообщений в темах форума.</hook_desc>
+	  <hook_author>Evgeniy Goryuchkin</hook_author>
+	  <hook_email>goryuchkin@gmail.com</hook_email>
+	  <hook_website>http://forum.pskovonline.ru/</hook_website>
+	  <hook_update_check/>
+	  <hook_requirements><![CDATA[a:3:{s:21:"required_applications";a:1:{s:4:"core";a:3:{s:8:"app_name";s:14:"Система";s:11:"min_version";i:30011;s:11:"max_version";i:0;}}s:20:"hook_php_version_min";s:0:"";s:20:"hook_php_version_max";s:0:"";}]]></hook_requirements>
+	  <hook_version_human>0.1</hook_version_human>
+	  <hook_version_long>1</hook_version_long>
+	  <hook_extra_data><![CDATA[a:1:{s:7:"display";N;}]]></hook_extra_data>
+	  <hook_key>pinpost</hook_key>
+	  <hook_global_caches/>
+	</config>
+  </hookdata>
+  <hookfiles>
+	<file>
+	  <hook_file_real>PinpostsTopicSkin.php</hook_file_real>
+	  <hook_type>skinHooks</hook_type>
+	  <hook_classname>PinpostsTopicSkin</hook_classname>
+	  <hook_data><![CDATA[a:8:{s:12:"dataLocation";s:0:"";s:14:"libApplication";s:0:"";s:15:"classToOverload";s:10:"skin_topic";s:9:"skinGroup";N;s:12:"skinFunction";N;s:4:"type";N;s:2:"id";N;s:8:"position";N;}]]></hook_data>
+	  <hooks_source><![CDATA[
+class PinpostsTopicSkin extends skin_topic(~id~) {
+	/**
+	 * @param array $forum
+	 * @param array $topic
+	 * @param array $post_data
+	 * @param array $displayData
+	 *
+	 * @return string
+	 */
+	public function topicViewTemplate($forum, $topic, $post_data, $displayData) {
+		$hooksCache = ipsRegistry::cache()->getCache('hooks');
+		$topicHook = null;
+		foreach ($hooksCache['libraryHooks'] as $libraryHooks) {
+			if (isset($libraryHooks['public_forums_forums_topics'])) {
+				$topicHook = end($libraryHooks['public_forums_forums_topics']);
+			}
+		}
+		if ($topicHook != null) {
+			require_once(IPS_HOOKS_PATH . $topicHook['filename']);
+		}
+
+		$settings = ipsRegistry::instance()->fetchSettings();
+
+		if (in_array($forum['id'], $settings['pin_topic_forums'])) {
+			$topicsHelper = new TopicsHelper();
+			$topicsHelper->helperInit();
+			$pinnedPost = $topicsHelper->getPostById($topic['topic_firstpost']);
+
+			$pinnedPost['post']['_adCode'] = '<div style="background: #EBF0F3; height: 2em; padding: 0 2px; position: relative; right: 3px; width: 100%;"></div>';
+			$adCodeSet = true;
+
+			$pinnedPost['post']['post_count'] = 1; // TODO: count me
+
+			if ($pinnedPost != null) {
+				$postIds = array_keys($post_data);
+				if (in_array($pinnedPost['post']['pid'], $postIds)) {
+					// Если пост уже в массиве, то удаляем его и ставим на первое место.
+					unset($post_data[$pinnedPost['post']['pid']]);
+				}
+
+				$post_data = array($pinnedPost) + $post_data;
+			}
+		}
+
+		return parent::topicViewTemplate($forum, $topic, $post_data, $displayData);
+	}
+}
+]]></hooks_source>
+	</file>
+	<file>
+	  <hook_file_real>TopicsHelper.php</hook_file_real>
+	  <hook_type>libraryHooks</hook_type>
+	  <hook_classname>TopicsHelper</hook_classname>
+	  <hook_data><![CDATA[a:8:{s:12:"dataLocation";s:0:"";s:14:"libApplication";s:1:"0";s:15:"classToOverload";s:27:"public_forums_forums_topics";s:9:"skinGroup";N;s:12:"skinFunction";N;s:4:"type";N;s:2:"id";N;s:8:"position";N;}]]></hook_data>
+	  <hooks_source><![CDATA[<?php
+
+class TopicsHelper extends (~extends~) {
+	public function helperInit() {
+		$this->makeRegistryShortcuts(ipsRegistry::instance());
+		$this->forumClass = $this->registry->getClass('class_forums');
+	}
+
+	// $pid - int
+	public function getPostById($pid) {
+		$posts = $this->getPostsById(array($pid));
+		if (is_array($posts) && count($posts) > 0) {
+			return $posts[$pid];
+		} else {
+			return null;
+		}
+	}
+
+	// $pids - array of int
+	public function getPostsById($pids) {
+		/* Data Hook Location */
+		$dataHook = array( 'members' => array(), 'postJoins' => array() );
+		IPSLib::doDataHooks( $dataHook , 'topicViewQuery' );
+		
+		//-----------------------------------------
+		// Joins
+		//-----------------------------------------		
+		
+		$_extraMember = ( is_array($dataHook['members']) && count($dataHook['members']) ) ? ',m.'.implode(',m.', $dataHook['members']) : '';
+		
+		$_post_joins = array(
+								array( 
+										'select' => 'm.member_id as mid,m.name,m.member_group_id,m.email,m.joined,m.posts, m.last_visit, m.last_activity,m.login_anonymous,m.title as member_title, m.warn_level, m.warn_lastwarn, m.members_display_name, m.members_seo_name, m.has_gallery, m.has_blog, m.members_bitoptions,m.mgroup_others'.$_extraMember,
+										'from'   => array( 'members' => 'm' ),
+										'where'  => 'm.member_id=p.author_id',
+										'type'   => 'left'
+									),
+								array( 
+										'select' => 'pp.*',
+										'from'   => array( 'profile_portal' => 'pp' ),
+										'where'  => 'm.member_id=pp.pp_member_id',
+										'type'   => 'left'
+								)
+							);
+		
+		/* Add data hook joins */					
+		if ( is_array($dataHook['postJoins']) && count($dataHook['postJoins']) )
+		{
+			$_post_joins = array_merge( $_post_joins, $dataHook['postJoins'] );
+		}
+		
+		/* Add custom fields join? */
+		if( $this->settings['custom_profile_topic'] == 1 )
+		{
+			$_post_joins[] = array( 
+									'select' => 'pc.*',
+									'from'   => array( 'pfields_content' => 'pc' ),
+									'where'  => 'pc.member_id=p.author_id',
+									'type'   => 'left'
+								);
+		}							
+		
+		/* Reputation system enabled? */
+		if( $this->settings['reputation_enabled'] )
+		{
+			/* Add the join to figure out if the user has already rated the post */
+			$_post_joins[] = $this->registry->repCache->getUserHasRatedJoin( 'pid', 'p.pid', 'forums' );
+			
+			/* Add the join to figure out the total ratings for each post */
+			if( $this->settings['reputation_show_content'] )
+			{
+				$_post_joins[] = $this->registry->repCache->getTotalRatingJoin( 'pid', 'p.pid', 'forums' );
+			}
+		}
+		
+		/* Cache? */
+		if ( IPSContentCache::isEnabled() )
+		{
+			if ( IPSContentCache::fetchSettingValue('post') )
+			{
+				$_post_joins[] = IPSContentCache::join( 'post', 'p.pid' );
+			}
+			
+			if ( IPSContentCache::fetchSettingValue('sig') )
+			{
+				$_post_joins[] = IPSContentCache::join( 'sig' , 'm.member_id', 'ccb', 'left', 'ccb.cache_content as cache_content_sig, ccb.cache_updated as cache_updated_sig' );
+			}
+		}
+		
+		/* Ignored Users */
+		$ignored_users = array();
+		
+		foreach( $this->member->ignored_users as $_i )
+		{
+			if( $_i['ignore_topics'] )
+			{
+				$ignored_users[] = $_i['ignore_ignore_id'];
+			}
+		}
+		
+		//-----------------------------------------
+		// Get posts
+		//-----------------------------------------
+
+		$this->DB->build( array( 'select'   => 'p.*',
+								 'from'	    => array( 'posts' => 'p' ),
+								 'where'    => "p.pid IN(" . implode( ',', $pids ) . ")",
+								 'order'    => $this->settings['post_order_column'] . ' ' . $this->settings['post_order_sort'],
+								 'add_join' => $_post_joins )	);
+
+		$oq = $this->DB->execute();
+
+		if ( ! $this->DB->getTotalRows() )
+		{
+			return array();
+		}
+
+		//-----------------------------------------
+		// Format and print out the topic list
+		//-----------------------------------------
+		
+		$adCodeSet = false;
+		$post_data = array();
+
+		while ( $row = $this->DB->fetch( $oq ) )
+		{
+			$row['member_id']	= $row['mid'];
+
+			$_data = $this->parsePostRow( $row );
+			
+			$post_data[ $_data['post'] ['pid'] ] = $_data;
+
+			//-----------------------------------------
+			// Are we giving this bloke a good ignoring?
+			//-----------------------------------------
+			
+			$post_data[ $row['pid'] ]['post']['_ignored']	= 0;
+
+			if ( isset( $ignored_users ) && is_array( $ignored_users ) && count( $ignored_users ) )
+			{
+				if( in_array( $post_data[ $row['pid'] ]['author']['member_id'], $ignored_users ) )
+				{
+					if ( ! strstr( $this->settings['cannot_ignore_groups'], ','.$post_data[ $row['pid'] ]['post']['member_group_id'].',' ) )
+					{
+						$post_data[ $row['pid'] ]['post']['_ignored'] = 1;
+						continue;
+					}
+				}
+			}
+			
+			/* AD Code */
+			$post_data[ $row['pid'] ]['post']['_adCode']	= '';
+
+			if ( $this->registry->getClass('IPSAdCode')->userCanViewAds() && ! $adCodeSet )
+			{
+				if ( $this->registry->getClass('IPSAdCode')->getAdCode('ad_code_topic_view_code') )
+				{
+					$post_data[ $row['pid'] ]['post']['_adCode']	= $this->registry->getClass('IPSAdCode')->getAdCode('ad_code_topic_view_code');
+					$adCodeSet										= true;
+				}
+			}
+		}
+
+		//-----------------------------------------
+		// Print the footer
+		//-----------------------------------------
+
+		return $post_data;
+	}
+}
+
+]]></hooks_source>
+	</file>
+  </hookfiles>
+  <hookextras_settings/>
+  <hookextras_language/>
+  <hookextras_modules/>
+  <hookextras_help/>
+  <hookextras_templates/>
+  <hookextras_css/>
+  <hookextras_tasks/>
+  <hookextras_database_create/>
+  <hookextras_database_alter/>
+  <hookextras_database_update/>
+  <hookextras_database_insert/>
+</hookexport>
