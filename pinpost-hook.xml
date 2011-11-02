@@ -62,15 +62,17 @@ class PinpostsTopicSkin extends skin_topic(~id~) {
 			
 			foreach ($pinnedPosts as $pinnedPost) {
 				if (in_array($pinnedPost['post']['pid'], $postIds)) {
-					// Если пост уже в массиве, то удаляем его.
-					unset($post_data[$pinnedPost['post']['pid']]);
+						// Если пост уже в массиве, то удаляем его.
+						unset($post_data[$pinnedPost['post']['pid']]);
 				}
 				
 				// $pinnedPost['post']['post_count'] = 1; // TODO: count me $postCount++
 			}
-			
+
+			$pinned_post_data = $topicsHelper->_parseAttachments($pinnedPosts);
+
 			// Ставим закрепленные посты перед основным списком.
-			$post_data = $pinnedPosts + $post_data;
+			$post_data = $pinned_post_data + $post_data;
 		}
 		
 		// Закрепление первых постов в заданных разделах.
@@ -82,12 +84,15 @@ class PinpostsTopicSkin extends skin_topic(~id~) {
 
 			if ($pinnedPost != null) {
 				if (in_array($pinnedPost['post']['pid'], $postIds)) {
-					// Если пост уже в массиве, то удаляем его.
-					unset($post_data[$pinnedPost['post']['pid']]);
+						// Если пост уже в массиве, то удаляем его.
+						unset($post_data[$pinnedPost['post']['pid']]);
 				}
 
+				$pinned_post_data = array($pinnedPost['post']['pid'] => $pinnedPost);
+				$pinned_post_data = $topicsHelper->_parseAttachments($pinned_post_data);
+
 				// Ставим пост на первое место.
-				$post_data = array($pinnedPost) + $post_data;
+				$post_data = $pinned_post_data + $post_data;
 			}
 		}
 
@@ -111,7 +116,7 @@ class TopicsHelper extends (~extends~) {
 	
 	public function getPinnedPids($topic_id) {
 		$this->DB->build(array(
-    		'select' => 'p.pid',
+			'select' => 'p.pid',
 			'from' => array('posts' => 'p'),
 			'where' => '(p.topic_id = ' . intval($topic_id) . ') AND (p.pinposts_pinned > 0)',
 			// 'order' => $this->settings['post_order_column'] . ' ' . $this->settings['post_order_sort'],
@@ -232,9 +237,9 @@ class TopicsHelper extends (~extends~) {
 		//-----------------------------------------
 
 		$this->DB->build( array( 'select'   => 'p.*',
-								 'from'	    => array( 'posts' => 'p' ),
-								 'where'    => "p.pid IN(" . implode( ',', $pids ) . ")",
-								 'order'    => $this->settings['post_order_column'] . ' ' . $this->settings['post_order_sort'],
+								 'from'		=> array( 'posts' => 'p' ),
+								 'where'	=> "p.pid IN(" . implode( ',', $pids ) . ")",
+								 'order'	=> $this->settings['post_order_column'] . ' ' . $this->settings['post_order_sort'],
 								 'add_join' => $_post_joins )	);
 
 		$oq = $this->DB->execute();
@@ -301,151 +306,151 @@ class TopicsHelper extends (~extends~) {
 ]]></hooks_source>
 	</file>
 	<file>
-      <hook_file_real>PinpostsForumsModerateModerateAction.php</hook_file_real>
-      <hook_type>commandHooks</hook_type>
-      <hook_classname>PinpostsForumsModerateModerateAction</hook_classname>
-      <hook_data><![CDATA[a:6:{s:15:"classToOverload";s:31:"public_forums_moderate_moderate";s:9:"skinGroup";N;s:12:"skinFunction";N;s:4:"type";N;s:2:"id";N;s:8:"position";N;}]]></hook_data>
-      <hooks_source><![CDATA[<?php
+	  <hook_file_real>PinpostsForumsModerateModerateAction.php</hook_file_real>
+	  <hook_type>commandHooks</hook_type>
+	  <hook_classname>PinpostsForumsModerateModerateAction</hook_classname>
+	  <hook_data><![CDATA[a:6:{s:15:"classToOverload";s:31:"public_forums_moderate_moderate";s:9:"skinGroup";N;s:12:"skinFunction";N;s:4:"type";N;s:2:"id";N;s:8:"position";N;}]]></hook_data>
+	  <hooks_source><![CDATA[<?php
 
 class PinpostsForumsModerateModerateAction extends (~extends~) {
-    protected function _multiPostModify() {
-        $this->pids  = $this->_getIds('selectedpids', 'selectedpidsJS');
+	protected function _multiPostModify() {
+		$this->pids  = $this->_getIds('selectedpids', 'selectedpidsJS');
 
-        if (count($this->pids)) {
-            switch ($this->request['tact']) {
-                case 'pinposts_pin':
-                    $this->pinpostsPinPosts(true);
-                break;
-                case 'pinposts_unpin':
-                    $this->pinpostsPinPosts(false);
-                break;
-            }
-        }
+		if (count($this->pids)) {
+			switch ($this->request['tact']) {
+				case 'pinposts_pin':
+					$this->pinpostsPinPosts(true);
+				break;
+				case 'pinposts_unpin':
+					$this->pinpostsPinPosts(false);
+				break;
+			}
+		}
 
-        parent::_multiPostModify();
-    }
+		parent::_multiPostModify();
+	}
 
-    private function pinpostsPinPosts($pin) {
-        $pin = (bool) $pin;
+	private function pinpostsPinPosts($pin) {
+		$pin = (bool) $pin;
 
-        // Проверка прав
-        $permission = $pin ? 'pin_topic' : 'unpin_topic';
-        $this->_resetModerator($this->topic['forum_id']);
-        $this->_genericPermissionCheck($permission);
+		// Проверка прав
+		$permission = $pin ? 'pin_topic' : 'unpin_topic';
+		$this->_resetModerator($this->topic['forum_id']);
+		$this->_genericPermissionCheck($permission);
 
-        // Действие
-        $sql = 'pinposts_pinned='.($pin ? 1 : 0);
-        $this->DB->buildAndFetch(array(
-            'update' => 'posts',
-            'set'    => $sql,
-            'where'  => "pid IN('".implode("','", $this->pids)."')",
-            ));
+		// Действие
+		$sql = 'pinposts_pinned='.($pin ? 1 : 0);
+		$this->DB->buildAndFetch(array(
+			'update' => 'posts',
+			'set'	=> $sql,
+			'where'  => "pid IN('".implode("','", $this->pids)."')",
+			));
 
-        // Запись в лог
-        $lang = $pin ? 'pinposts_mod_pinned' : 'pinposts_mod_unpinned';
-        $this->_addModeratorLog(sprintf(
-            $this->lang->words[$lang], implode(', ', $this->pids)));
-    }
+		// Запись в лог
+		$lang = $pin ? 'pinposts_mod_pinned' : 'pinposts_mod_unpinned';
+		$this->_addModeratorLog(sprintf(
+			$this->lang->words[$lang], implode(', ', $this->pids)));
+	}
 }]]></hooks_source>
-    </file>
-    <file>
-      <hook_file_real>PinpostsForumsForumsModeratorAdminAction.php</hook_file_real>
-      <hook_type>commandHooks</hook_type>
-      <hook_classname>PinpostsForumsForumsModeratorAdminAction</hook_classname>
-      <hook_data><![CDATA[a:6:{s:15:"classToOverload";s:29:"admin_forums_forums_moderator";s:9:"skinGroup";N;s:12:"skinFunction";N;s:4:"type";N;s:2:"id";N;s:8:"position";N;}]]></hook_data>
-      <hooks_source><![CDATA[<?php
+	</file>
+	<file>
+	  <hook_file_real>PinpostsForumsForumsModeratorAdminAction.php</hook_file_real>
+	  <hook_type>commandHooks</hook_type>
+	  <hook_classname>PinpostsForumsForumsModeratorAdminAction</hook_classname>
+	  <hook_data><![CDATA[a:6:{s:15:"classToOverload";s:29:"admin_forums_forums_moderator";s:9:"skinGroup";N;s:12:"skinFunction";N;s:4:"type";N;s:2:"id";N;s:8:"position";N;}]]></hook_data>
+	  <hooks_source><![CDATA[<?php
 
 class PinpostsForumsForumsModeratorAdminAction extends (~extends~) {
-    /**
-    * @see admin_forums_forums_moderator::modForm
-    *
-    * @param string $type
-    */
-    public function modForm($type='add') {
-        $this->lang->words['frm_m_pin']   = $this->lang->words['pinposts_frm_m_pin'];
-        $this->lang->words['frm_m_unpin'] = $this->lang->words['pinposts_frm_m_unpin'];
+	/**
+	* @see admin_forums_forums_moderator::modForm
+	*
+	* @param string $type
+	*/
+	public function modForm($type='add') {
+		$this->lang->words['frm_m_pin']   = $this->lang->words['pinposts_frm_m_pin'];
+		$this->lang->words['frm_m_unpin'] = $this->lang->words['pinposts_frm_m_unpin'];
 
-        return parent::modForm($type);
-    }
+		return parent::modForm($type);
+	}
 }]]></hooks_source>
-    </file>
+	</file>
   </hookfiles>
   <hookextras_settings/>
   <hookextras_language>
-    <language>
-      <word_app>forums</word_app>
-      <word_pack>public_mod</word_pack>
-      <word_key>pinposts_mod_pinned</word_key>
-      <word_default>Сообщение(я) закреплены: %s.</word_default>
-      <word_custom/>
-      <word_js>0</word_js>
-    </language>
-    <language>
-      <word_app>forums</word_app>
-      <word_pack>public_mod</word_pack>
-      <word_key>pinposts_mod_unpinned</word_key>
-      <word_default>Сообщение(я) опущены: %s.</word_default>
-      <word_custom/>
-      <word_js>0</word_js>
-    </language>
-    <language>
-      <word_app>forums</word_app>
-      <word_pack>public_topic</word_pack>
-      <word_key>pinposts_cpt_unpin</word_key>
-      <word_default>Опустить сообщения</word_default>
-      <word_custom/>
-      <word_js>0</word_js>
-    </language>
-    <language>
-      <word_app>forums</word_app>
-      <word_pack>public_topic</word_pack>
-      <word_key>pinposts_cpt_pin</word_key>
-      <word_default>Закрепить сообщения</word_default>
-      <word_custom/>
-      <word_js>0</word_js>
-    </language>
-    <language>
-      <word_app>forums</word_app>
-      <word_pack>admin_forums</word_pack>
-      <word_key>pinposts_frm_m_pin</word_key>
-      <word_default>Может закреплять темы/сообщения?</word_default>
-      <word_custom/>
-      <word_js>0</word_js>
-    </language>
-    <language>
-      <word_app>forums</word_app>
-      <word_pack>admin_forums</word_pack>
-      <word_key>pinposts_frm_m_unpin</word_key>
-      <word_default>Может опускать темы/сообщения?</word_default>
-      <word_custom/>
-      <word_js>0</word_js>
-    </language>
+	<language>
+	  <word_app>forums</word_app>
+	  <word_pack>public_mod</word_pack>
+	  <word_key>pinposts_mod_pinned</word_key>
+	  <word_default>Сообщение(я) закреплены: %s.</word_default>
+	  <word_custom/>
+	  <word_js>0</word_js>
+	</language>
+	<language>
+	  <word_app>forums</word_app>
+	  <word_pack>public_mod</word_pack>
+	  <word_key>pinposts_mod_unpinned</word_key>
+	  <word_default>Сообщение(я) опущены: %s.</word_default>
+	  <word_custom/>
+	  <word_js>0</word_js>
+	</language>
+	<language>
+	  <word_app>forums</word_app>
+	  <word_pack>public_topic</word_pack>
+	  <word_key>pinposts_cpt_unpin</word_key>
+	  <word_default>Опустить сообщения</word_default>
+	  <word_custom/>
+	  <word_js>0</word_js>
+	</language>
+	<language>
+	  <word_app>forums</word_app>
+	  <word_pack>public_topic</word_pack>
+	  <word_key>pinposts_cpt_pin</word_key>
+	  <word_default>Закрепить сообщения</word_default>
+	  <word_custom/>
+	  <word_js>0</word_js>
+	</language>
+	<language>
+	  <word_app>forums</word_app>
+	  <word_pack>admin_forums</word_pack>
+	  <word_key>pinposts_frm_m_pin</word_key>
+	  <word_default>Может закреплять темы/сообщения?</word_default>
+	  <word_custom/>
+	  <word_js>0</word_js>
+	</language>
+	<language>
+	  <word_app>forums</word_app>
+	  <word_pack>admin_forums</word_pack>
+	  <word_key>pinposts_frm_m_unpin</word_key>
+	  <word_default>Может опускать темы/сообщения?</word_default>
+	  <word_custom/>
+	  <word_js>0</word_js>
+	</language>
   </hookextras_language>
   <hookextras_modules/>
   <hookextras_help/>
   <hookextras_templates>
-    <templates>
-      <template_set_id>0</template_set_id>
-      <template_group>skin_topic</template_group>
-      <template_content><![CDATA[<if test="$displayData['mod_links'] && $this->memberData['is_mod']">
+	<templates>
+	  <template_set_id>0</template_set_id>
+	  <template_group>skin_topic</template_group>
+	  <template_content><![CDATA[<if test="$displayData['mod_links'] && $this->memberData['is_mod']">
 <script type='text/javascript'>
-    (function() {
-        var selectElement = $('tact');
-        selectElement.insert('<option value="pinposts_pin">{$this->lang->words['pinposts_cpt_pin']}</option>');
-        selectElement.insert('<option value="pinposts_unpin">{$this->lang->words['pinposts_cpt_unpin']}</option>');
-        selectElement.selectedIndex = 0;
-    })();
+	(function() {
+		var selectElement = $('tact');
+		selectElement.insert('<option value="pinposts_pin">{$this->lang->words['pinposts_cpt_pin']}</option>');
+		selectElement.insert('<option value="pinposts_unpin">{$this->lang->words['pinposts_cpt_unpin']}</option>');
+		selectElement.selectedIndex = 0;
+	})();
 </script>
 </if>]]></template_content>
-      <template_name>hookPinposts__modOptions</template_name>
-      <template_data>$displayData</template_data>
-      <template_updated>1258888608</template_updated>
-      <template_removable>0</template_removable>
-      <template_added_to>0</template_added_to>
-      <template_user_added>0</template_user_added>
-      <template_user_edited>0</template_user_edited>
-      <template_set_type>master_skin</template_set_type>
-    </templates>
+	  <template_name>hookPinposts__modOptions</template_name>
+	  <template_data>$displayData</template_data>
+	  <template_updated>1258888608</template_updated>
+	  <template_removable>0</template_removable>
+	  <template_added_to>0</template_added_to>
+	  <template_user_added>0</template_user_added>
+	  <template_user_edited>0</template_user_edited>
+	  <template_set_type>master_skin</template_set_type>
+	</templates>
   </hookextras_templates>
   <hookextras_css/>
   <hookextras_tasks/>
