@@ -9,8 +9,8 @@
 	  <hook_website>http://forum.pskovonline.ru/</hook_website>
 	  <hook_update_check/>
 	  <hook_requirements><![CDATA[a:3:{s:21:"required_applications";a:1:{s:4:"core";a:3:{s:8:"app_name";s:14:"Система";s:11:"min_version";i:30011;s:11:"max_version";i:0;}}s:20:"hook_php_version_min";s:0:"";s:20:"hook_php_version_max";s:0:"";}]]></hook_requirements>
-	  <hook_version_human>0.3</hook_version_human>
-	  <hook_version_long>3</hook_version_long>
+	  <hook_version_human>0.4</hook_version_human>
+	  <hook_version_long>4</hook_version_long>
 	  <hook_extra_data><![CDATA[a:2:{s:7:"display";N;s:9:"templates";a:1:{s:10:"skin_topic";a:1:{s:0:"";s:24:"hookPinposts__modOptions";}}}]]></hook_extra_data>
 	  <hook_key>pinpost</hook_key>
 	  <hook_global_caches/>
@@ -432,16 +432,73 @@ class PinpostsForumsForumsModeratorAdminAction extends (~extends~) {
 	<templates>
 	  <template_set_id>0</template_set_id>
 	  <template_group>skin_topic</template_group>
-	  <template_content><![CDATA[<if test="$displayData['mod_links'] && $this->memberData['is_mod']">
+	  <template_content><![CDATA[
 <script type='text/javascript'>
-	(function() {
-		var selectElement = $('tact');
-		selectElement.insert('<option value="pinposts_pin">{$this->lang->words['pinposts_cpt_pin']}</option>');
-		selectElement.insert('<option value="pinposts_unpin">{$this->lang->words['pinposts_cpt_unpin']}</option>');
-		selectElement.selectedIndex = 0;
-	})();
+		_topic.prototype.topic.updatePostModButton = function() {
+		    /* Do we have any checked? */
+		    if( ipb.topic.totalChecked > 0 )
+		    {
+		        /* Yes! Have we loaded in the HTML for the box? */
+		        if( !$('comment_moderate_box') )
+		        {
+		            /* No? Then do it! */
+		            $$('body')[0].insert({'bottom': ipb.templates['post_moderation'].evaluate({count: ipb.topic.totalChecked}) });
+		            
+		            /* And set the action for the submit button */
+		            $('submitModAction').on('click', ipb.topic.doModerate);
+		        }
+		        else
+		        {
+		            /* Yes, just update the number of checked boxes */
+		            $('comment_count').update( ipb.topic.totalChecked );
+		        }
+		        
+		        /* And show the box */
+		        if( !$('comment_moderate_box').visible() )
+		        {
+		            new Effect.Appear( $('comment_moderate_box'), { duration: 0.3 } );
+		        }
+
+		        $('tactInPopup').select('option').invoke('remove');
+
+		        /* Update the available options */
+		        if ( ipb.topic.modOptionsUnapproved )
+		        {
+		            $('tactInPopup').insert( new Element('option', { value: 'approve' } ).update( ipb.lang['cpt_approve'] ) );
+		        }
+		        if ( ipb.topic.modOptionsUnhidden )
+		        {
+		            $('tactInPopup').insert( new Element('option', { value: 'delete' } ).update( ipb.lang['cpt_hide'] ) );
+		        }
+		        if ( ipb.topic.modOptionsHidden )
+		        {
+		            $('tactInPopup').insert( new Element('option', { value: 'sundelete' } ).update( ipb.lang['cpt_undelete'] ) );
+		        }
+		        $('tactInPopup').insert( new Element('option', { value: 'deletedo' } ).update( ipb.lang['cpt_delete'] ) );
+
+		        if ( ipb.topic.totalChecked > 1 )
+		        {
+		            $('tactInPopup').insert( new Element('option', { value: 'merge' } ).update( ipb.lang['cpt_merge'] ) );
+		        }
+
+		        $('tactInPopup').insert( new Element('option', { value: 'split' } ).update( ipb.lang['cpt_split'] ) );
+		        $('tactInPopup').insert( new Element('option', { value: 'move' } ).update( ipb.lang['cpt_move'] ) );
+		        
+		        // <option value='pinposts_pin'>{$this->lang->words['pinposts_cpt_pin']}</option>
+		        $('tactInPopup').insert(new Element('option', {value: 'pinposts_pin' }).update('Закрепить сообщения'));
+		        $('tactInPopup').insert(new Element('option', {value: 'pinposts_unpin' }).update('Открепить сообщения'));
+		    }
+		    else
+		    {
+		        /* No - get rid of the box */
+		        if( $('comment_moderate_box') )
+		        {
+		            new Effect.Fade( $('comment_moderate_box'), { duration: 0.3 } );
+		        }
+		    }
+		};
 </script>
-</if>]]></template_content>
+]]></template_content>
 	  <template_name>hookPinposts__modOptions</template_name>
 	  <template_data>$displayData</template_data>
 	  <template_updated>1258888608</template_updated>
